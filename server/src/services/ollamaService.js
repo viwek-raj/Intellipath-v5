@@ -1,14 +1,17 @@
 import { Ollama } from 'ollama';
+import dotenv from 'dotenv';
+dotenv.config();
 
 // const ollama = new Ollama({ host: process.env.OLLAMA_HOST || 'http://localhost:11434' });
 const ollama = new Ollama({
-     host: "https://ollama.com",
-  headers: {
-    Authorization: "Bearer " + process.env.OLLAMA_API_KEY,
-  },
- });
+    // host: process.env.OLLAMA_HOST,
+    host: 'https://ollama.com',
+    headers: {
+        Authorization: "Bearer " + process.env.OLLAMA_API_KEY,
+    },
+});
 
-const generateResponse = async (prompt, model = 'gpt-oss:120b-cloud') => {
+const generateResponse = async (prompt, model = 'gemma4:31b-cloud') => {
     try {
         const response = await ollama.chat({
             model: model,
@@ -16,7 +19,7 @@ const generateResponse = async (prompt, model = 'gpt-oss:120b-cloud') => {
         });
         return response.message.content;
     } catch (error) {
-        // console.error('Ollama Error:', error);
+        console.error('Ollama Error:', error);
         throw new Error('Failed to generate response from Ollama');
     }
 };
