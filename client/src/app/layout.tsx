@@ -18,6 +18,7 @@ import { AuthProvider } from "@/context/AuthContext";
 
 import { ThemeProvider } from "@/components/theme-provider";
 import { Navbar } from "@/components/navbar";
+import { Toaster } from "@/components/ui/sonner";
 
 export default function RootLayout({
   children,
@@ -39,6 +40,7 @@ export default function RootLayout({
                 <main className="min-h-screen bg-background">
                     {children}
                 </main>
+                <Toaster />
             </AuthProvider>
         </ThemeProvider>
       </body>

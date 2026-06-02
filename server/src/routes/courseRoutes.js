@@ -1,19 +1,21 @@
 import express from 'express';
-import { createCourse, getCourses, getCourseById, getModule, getQuiz, submitQuiz, getAnalytics } from '../controllers/courseController.js';
-import { protect } from '../middleware/authMiddleware.js';
+import { createCourse, getCourses, getCourseById, getModule, updateModuleStatus, getQuiz, submitQuiz, getAnalytics, deleteCourse } from '../controllers/courseController.js';
+import { protect, requireApproved } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
-router.get('/analytics', protect, getAnalytics);
+router.get('/analytics', protect, requireApproved, getAnalytics);
 router.route('/')
-    .post(protect, createCourse)
-    .get(protect, getCourses);
+    .post(protect, requireApproved, createCourse)
+    .get(protect, requireApproved, getCourses);
 
 router.route('/:id')
-    .get(protect, getCourseById);
+    .get(protect, requireApproved, getCourseById)
+    .delete(protect, requireApproved, deleteCourse);
 
-router.get('/:id/modules/:moduleId', protect, getModule);
-router.get('/:id/modules/:moduleId/quiz', protect, getQuiz);
-router.post('/:id/modules/:moduleId/quiz', protect, submitQuiz);
+router.get('/:id/modules/:moduleId', protect, requireApproved, getModule);
+router.put('/:id/modules/:moduleId', protect, requireApproved, updateModuleStatus);
+router.get('/:id/modules/:moduleId/quiz', protect, requireApproved, getQuiz);
+router.post('/:id/modules/:moduleId/quiz', protect, requireApproved, submitQuiz);
 
 export default router;

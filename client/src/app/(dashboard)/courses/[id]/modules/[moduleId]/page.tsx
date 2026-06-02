@@ -12,6 +12,7 @@ import { motion } from 'framer-motion';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import 'highlight.js/styles/github-dark.css';
+import { toast } from 'sonner';
 
 interface Module {
     _id: string;
@@ -101,7 +102,7 @@ export default function ModulePage({ params }: { params: Promise<{ id: string; m
 
     const handleSubmitQuiz = async () => {
         if (userAnswers.includes(-1)) {
-            alert("Please answer all questions");
+            toast.error("Please answer all questions");
             return;
         }
 

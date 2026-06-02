@@ -331,4 +331,27 @@ const getAnalytics = async (req, res) => {
     }
 };
 
-export { createCourse, getCourses, getCourseById, getModule, getQuiz, submitQuiz, getAnalytics };
+// @desc    Delete a course
+// @route   DELETE /api/courses/:id
+// @access  Private
+const deleteCourse = async (req, res) => {
+    try {
+        const course = await Course.findById(req.params.id);
+        
+        if (!course) {
+            return res.status(404).json({ message: 'Course not found' });
+        }
+
+        if (course.user.toString() !== req.user._id.toString()) {
+            return res.status(401).json({ message: 'Not authorized' });
+        }
+
+        await course.deleteOne();
+        res.json({ message: 'Course removed' });
+    } catch (error) {
+        console.error('Delete Course Error:', error);
+        res.status(500).json({ message: 'Failed to delete course' });
+    }
+};
+
+export { createCourse, getCourses, getCourseById, getModule, updateModuleStatus, getQuiz, submitQuiz, getAnalytics, deleteCourse };

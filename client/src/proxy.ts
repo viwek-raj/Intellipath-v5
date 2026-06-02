@@ -3,30 +3,48 @@ import type { NextRequest } from 'next/server';
 
 export default function proxy(request: NextRequest) {
     const token = request.cookies.get('token')?.value;
+    const userRole = request.cookies.get('userRole')?.value;
+    const accountStatus = request.cookies.get('accountStatus')?.value;
     const { pathname } = request.nextUrl;
-    console.log(`Middleware: ${pathname} Token: ${token ? 'Found' : 'Missing'}`);
 
     // Define protected routes
-    const protectedRoutes = ['/dashboard', '/courses', '/settings'];
+    const protectedRoutes = ['/dashboard', '/courses', '/settings', '/batches', '/admin', '/instructor'];
     const isProtectedRoute = protectedRoutes.some(route => pathname.startsWith(route));
 
-    // Define public routes (auth routes)
-    const authRoutes = ['/login', '/register', '/'];
-    const isAuthRoute = authRoutes.some(route => pathname.startsWith(route));
+    // Status-specific pages
+    const isPendingPage = pathname === '/pending';
+    const isDismissedPage = pathname === '/dismissed';
 
     // Redirect to login if accessing protected route without token
     if (isProtectedRoute && !token) {
-        const loginUrl = new URL('/login', request.url);
-        // Optional: Add return URL for better UX
-        // loginUrl.searchParams.set('from', pathname);
-        return NextResponse.redirect(loginUrl);
+        return NextResponse.redirect(new URL('/login', request.url));
     }
 
-    // Loop Fix: Allow access to auth routes even with token. 
-    // This allows the client to re-login if localStorage is out of sync with cookies.
-    // if (isAuthRoute && token) {
-    //     return NextResponse.redirect(new URL('/dashboard', request.url));
-    // }
+    // Redirect to login if accessing status pages without token
+    if ((isPendingPage || isDismissedPage) && !token) {
+        return NextResponse.redirect(new URL('/login', request.url));
+    }
+
+    // Role-based route protection (only if we have role info from cookie)
+    if (token && userRole) {
+        // Admin routes — admin only
+        if (pathname.startsWith('/admin') && userRole !== 'admin') {
+            return NextResponse.redirect(new URL('/dashboard', request.url));
+        }
+
+        // Instructor routes — instructor only
+        if (pathname.startsWith('/instructor') && userRole !== 'instructor') {
+            return NextResponse.redirect(new URL('/dashboard', request.url));
+        }
+
+        // Pending/dismissed — redirect approved users away from status pages
+        if (isPendingPage && accountStatus === 'approved') {
+            return NextResponse.redirect(new URL('/dashboard', request.url));
+        }
+        if (isDismissedPage && accountStatus !== 'dismissed') {
+            return NextResponse.redirect(new URL('/dashboard', request.url));
+        }
+    }
 
     return NextResponse.next();
 }
@@ -34,13 +52,6 @@ export default function proxy(request: NextRequest) {
 // Config matches all paths except static files, api, _next, and favicon
 export const config = {
     matcher: [
-        /*
-         * Match all request paths except for the ones starting with:
-         * - api (API routes)
-         * - _next/static (static files)
-         * - _next/image (image optimization files)
-         * - favicon.ico (favicon file)
-         */
         '/((?!api|_next/static|_next/image|favicon.ico).*)',
     ],
 };

@@ -9,6 +9,10 @@ import {
   PlusCircle,
   Settings,
   User,
+  Video,
+  Search,
+  Layers,
+  Sparkles,
 } from "lucide-react"
 import { usePathname } from "next/navigation"
 import Link from "next/link"
@@ -31,8 +35,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     const pathname = usePathname();
     const { user, logout } = useAuth();
     
-    // Add active state logic
-    const isActive = (path: string) => pathname === path;
+    const isActive = (path: string) => pathname === path || pathname.startsWith(path + '/');
 
   return (
     <Sidebar collapsible="icon" {...props}>
@@ -64,21 +67,30 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>
-                <SidebarMenuButton asChild isActive={isActive('/courses/create')} tooltip="Create Course">
-                    <Link href="/courses/create">
-                        <PlusCircle />
-                        <span>Create Course</span>
+                <SidebarMenuButton asChild isActive={isActive('/batches') && !pathname.includes('/enrolled')} tooltip="Browse Batches">
+                    <Link href="/batches">
+                        <Search />
+                        <span>Browse Batches</span>
                     </Link>
                 </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>
-                <SidebarMenuButton asChild isActive={isActive('/my-learning')} tooltip="My Learning">
-                     <Link href="/dashboard">
-                        <BookOpen />
-                        <span>My Learning</span>
+                <SidebarMenuButton asChild isActive={pathname === '/batches/enrolled'} tooltip="My Batches">
+                    <Link href="/batches/enrolled">
+                        <Layers />
+                        <span>My Batches</span>
                     </Link>
                 </SidebarMenuButton>
             </SidebarMenuItem>
+            <SidebarMenuItem>
+                <SidebarMenuButton asChild isActive={isActive('/courses/create')} tooltip="Generate AI Course">
+                    <Link href="/courses/create">
+                        <Sparkles />
+                        <span>Generate AI Course</span>
+                    </Link>
+                </SidebarMenuButton>
+            </SidebarMenuItem>
+
             <SidebarMenuItem>
                 <SidebarMenuButton asChild isActive={isActive('/settings')} tooltip="Settings">
                     <Link href="/settings">
