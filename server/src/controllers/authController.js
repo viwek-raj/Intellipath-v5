@@ -1,9 +1,12 @@
 import crypto from 'crypto';
+import { OAuth2Client } from 'google-auth-library';
 import User from '../models/User.js';
 import Course from '../models/Course.js';
 import generateToken from '../utils/generateToken.js';
 import { safeEnqueue } from '../config/queue.js';
 import { getVerificationEmailHtml, getNewsletterEmailHtml } from '../services/emailService.js';
+
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 // @desc    Auth user & get token
 // @route   POST /api/auth/login
@@ -43,6 +46,82 @@ const authUser = async (req, res) => {
         mustChangePassword: user.mustChangePassword || false,
         token: generateToken(res, user._id),
     });
+};
+
+// @desc    Auth user with Google OAuth
+// @route   POST /api/auth/google
+// @access  Public
+const googleAuth = async (req, res) => {
+    const { credential } = req.body;
+
+    if (!credential) {
+        return res.status(400).json({ message: 'Google credential is required' });
+    }
+
+    try {
+        // Verify the Google ID token
+        const ticket = await googleClient.verifyIdToken({
+            idToken: credential,
+            audience: process.env.GOOGLE_CLIENT_ID,
+        });
+
+        const payload = ticket.getPayload();
+        const { sub: googleId, email, name, email_verified } = payload;
+
+        if (!email_verified) {
+            return res.status(401).json({ message: 'Google email is not verified' });
+        }
+
+        // Look up user by email
+        let user = await User.findOne({ email }).setOptions({ includeDeleted: true });
+
+        if (user && user.isDeleted) {
+            // Previously soft-deleted account — remove it so we can re-create
+            await User.deleteOne({ _id: user._id });
+            user = null;
+        }
+
+        if (user) {
+            // Existing user — link Google if not already linked
+            if (!user.googleId) {
+                user.googleId = googleId;
+                user.authProvider = user.authProvider === 'local' ? 'local' : 'google';
+                await user.save();
+            }
+
+            // Block suspended users
+            if (user.accountStatus === 'suspended') {
+                return res.status(403).json({
+                    message: 'Your account has been suspended',
+                    suspendReason: user.suspendReason || '',
+                });
+            }
+        } else {
+            // New user — auto-register as student
+            user = await User.create({
+                name: name || email.split('@')[0],
+                email,
+                googleId,
+                authProvider: 'google',
+                role: 'student',
+                accountStatus: 'active',
+                isEmailVerified: true, // Google already verified the email
+            });
+        }
+
+        res.json({
+            _id: user._id,
+            name: user.name,
+            email: user.email,
+            role: user.role,
+            accountStatus: user.accountStatus,
+            mustChangePassword: false,
+            token: generateToken(res, user._id),
+        });
+    } catch (error) {
+        console.error('Google Auth Error:', error);
+        return res.status(401).json({ message: 'Invalid Google credential' });
+    }
 };
 
 // @desc    Register a new user
@@ -210,4 +289,4 @@ const subscribeNewsletter = async (req, res) => {
     res.status(200).json({ message: 'Successfully subscribed to the newsletter' });
 };
 
-export { authUser, registerUser, verifyEmail, deleteAccount, changePassword, subscribeNewsletter };
+export { authUser, googleAuth, registerUser, verifyEmail, deleteAccount, changePassword, subscribeNewsletter };

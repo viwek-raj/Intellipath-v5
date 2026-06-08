@@ -59,6 +59,8 @@ export const authApi = {
         api.post('/auth/login', data),
     register: (data: { name: string; email: string; password: string }) =>
         api.post('/auth/register', data),
+    googleLogin: (credential: string) =>
+        api.post('/auth/google', { credential }),
     changePassword: (data: { currentPassword: string; newPassword: string }) =>
         api.put('/auth/change-password', data),
     subscribe: (email: string) => api.post('/auth/subscribe', { email }),

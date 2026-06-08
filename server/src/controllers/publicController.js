@@ -1,6 +1,7 @@
 import User from '../models/User.js';
 import Batch from '../models/Batch.js';
 import Lecture from '../models/Lecture.js';
+import cache from '../services/cacheService.js';
 
 /**
  * @desc    Get public stats for landing page
@@ -9,15 +10,18 @@ import Lecture from '../models/Lecture.js';
  */
 export const getLandingPageStats = async (req, res) => {
     try {
-        const studentCount = await User.countDocuments({ role: 'student', accountStatus: 'active' });
-        const instructorCount = await User.countDocuments({ role: 'instructor', accountStatus: 'active' });
-        const batchCount = await Batch.countDocuments({ isActive: true });
+        const data = await cache.getOrFetch(
+            cache.keys.landingStats(),
+            async () => {
+                const studentCount = await User.countDocuments({ role: 'student', accountStatus: 'active' });
+                const instructorCount = await User.countDocuments({ role: 'instructor', accountStatus: 'active' });
+                const batchCount = await Batch.countDocuments({ isActive: true });
+                return { students: studentCount, instructors: instructorCount, batches: batchCount };
+            },
+            cache.TTL.LANDING_STATS
+        );
 
-        res.json({
-            students: studentCount,
-            instructors: instructorCount,
-            batches: batchCount
-        });
+        res.json(data);
     } catch (error) {
         console.error('Error fetching public stats:', error);
         res.status(500).json({ message: 'Server error fetching stats' });
@@ -31,27 +35,32 @@ export const getLandingPageStats = async (req, res) => {
  */
 export const getFeaturedBatches = async (req, res) => {
     try {
-        // Fetch up to 6 active batches
-        const batches = await Batch.find({ isActive: true })
-            .populate('instructor', 'name')
-            .sort({ createdAt: -1 })
-            .limit(6);
+        const data = await cache.getOrFetch(
+            cache.keys.featuredBatches(),
+            async () => {
+                const batches = await Batch.find({ isActive: true })
+                    .populate('instructor', 'name')
+                    .sort({ createdAt: -1 })
+                    .limit(6);
 
-        // Enrich with basic stats (student count)
-        const enriched = await Promise.all(
-            batches.map(async (batch) => {
-                const batchObj = batch.toObject();
-                batchObj.studentCount = batch.students.length;
-                batchObj.lectureCount = await Lecture.countDocuments({ batch: batch._id, isPublished: true });
-                // Hide private arrays
-                delete batchObj.students;
-                return batchObj;
-            })
+                const enriched = await Promise.all(
+                    batches.map(async (batch) => {
+                        const batchObj = batch.toObject();
+                        batchObj.studentCount = batch.students.length;
+                        batchObj.lectureCount = await Lecture.countDocuments({ batch: batch._id, isPublished: true });
+                        delete batchObj.students;
+                        return batchObj;
+                    })
+                );
+                return enriched;
+            },
+            cache.TTL.FEATURED_BATCHES
         );
 
-        res.json(enriched);
+        res.json(data);
     } catch (error) {
         console.error('Error fetching featured batches:', error);
         res.status(500).json({ message: 'Server error fetching featured batches' });
     }
 };
+

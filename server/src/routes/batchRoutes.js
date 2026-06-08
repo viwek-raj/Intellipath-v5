@@ -14,6 +14,7 @@ import {
     getBatchDetail,
 } from '../controllers/batchController.js';
 import { protect, requireApproved, requireRole } from '../middleware/authMiddleware.js';
+import { validateBatchCreate } from '../middleware/inputValidator.js';
 
 const router = express.Router();
 
@@ -24,7 +25,7 @@ router.get('/enrolled', protect, requireApproved, getMyEnrolledBatches);
 
 // ── Instructor routes (protect → requireApproved → requireRole) ──
 router.get('/my', protect, requireApproved, requireRole('instructor'), getMyBatches);
-router.post('/', protect, requireApproved, requireRole('instructor'), createBatch);
+router.post('/', protect, requireApproved, requireRole('instructor'), validateBatchCreate, createBatch);
 
 // ── Parameterized routes ─────────────────────────────────
 // Student

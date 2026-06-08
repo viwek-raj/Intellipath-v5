@@ -4,11 +4,13 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
+import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardHeader, CardTitle, CardContent, CardFooter, CardDescription } from '@/components/ui/card';
 import { MailCheck, Loader2 } from 'lucide-react';
+import GoogleSignInButton from '@/components/GoogleSignInButton';
 
 export default function RegisterPage() {
     const [name, setName] = useState('');
@@ -17,6 +19,7 @@ export default function RegisterPage() {
     const [error, setError] = useState('');
     const [successMessage, setSuccessMessage] = useState('');
     const router = useRouter();
+    const { login } = useAuth();
 
     // Listen for login event from the email verification tab
     useEffect(() => {
@@ -118,6 +121,19 @@ export default function RegisterPage() {
                             Sign Up
                         </Button>
                     </form>
+
+                    {/* Divider */}
+                    <div className="relative my-6">
+                        <div className="absolute inset-0 flex items-center">
+                            <span className="w-full border-t border-gray-300 dark:border-gray-600" />
+                        </div>
+                        <div className="relative flex justify-center text-xs uppercase">
+                            <span className="bg-white dark:bg-gray-900 px-2 text-gray-500">or</span>
+                        </div>
+                    </div>
+
+                    {/* Google Sign-In */}
+                    <GoogleSignInButton onError={(msg) => setError(msg)} />
                 </CardContent>
                 <CardFooter className="justify-center">
                     <p className="text-sm text-gray-500">

@@ -15,12 +15,25 @@ const userSchema = mongoose.Schema(
         },
         password: {
             type: String,
-            required: true,
+            required: function () {
+                return this.authProvider === 'local';
+            },
         },
         role: {
             type: String,
             enum: ['student', 'instructor', 'admin'],
             default: 'student',
+        },
+
+        // ── OAuth ────────────────────────────────────
+        authProvider: {
+            type: String,
+            enum: ['local', 'google'],
+            default: 'local',
+        },
+        googleId: {
+            type: String,
+            sparse: true,
         },
 
         // ── Account approval workflow ────────────────
@@ -53,11 +66,12 @@ const userSchema = mongoose.Schema(
 userSchema.plugin(softDeletePlugin);
 
 userSchema.methods.matchPassword = async function (enteredPassword) {
+    if (!this.password) return false;
     return await bcrypt.compare(enteredPassword, this.password);
 };
 
 userSchema.pre('save', async function () {
-    if (!this.isModified('password')) {
+    if (!this.isModified('password') || !this.password) {
         return;
     }
 
@@ -68,4 +82,3 @@ userSchema.pre('save', async function () {
 const User = mongoose.model('User', userSchema);
 
 export default User;
-

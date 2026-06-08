@@ -4,6 +4,7 @@ import AssignmentSubmission from '../models/AssignmentSubmission.js';
 import Quiz from '../models/Quiz.js';
 import QuizSubmission from '../models/QuizSubmission.js';
 import Activity from '../models/Activity.js';
+import cache from '../services/cacheService.js';
 
 /**
  * @desc    Get dashboard analytics for the student
@@ -14,72 +15,76 @@ export const getStudentAnalytics = async (req, res) => {
     try {
         const studentId = req.user._id;
 
-        const totalBatches = await Batch.countDocuments({ students: studentId, isActive: true });
-        
-        const quizSubmissions = await QuizSubmission.find({ 
-            student: studentId, 
-            status: { $in: ['submitted', 'graded'] } 
-        }).populate('quiz');
-
-        const assignmentSubmissions = await AssignmentSubmission.find({ 
-            student: studentId, 
-            status: { $in: ['submitted', 'graded'] } 
-        });
-
-        const totalQuizzesTaken = quizSubmissions.length;
-        const totalAssignmentsSubmitted = assignmentSubmissions.length;
-
-        let totalQuizScore = 0;
-        let gradedQuizzes = 0;
-
-        quizSubmissions.forEach(sub => {
-            if (!sub.quiz) return; // Skip if quiz was deleted
-
-            let computedScore = sub.score;
-            let isGraded = sub.status === 'graded';
-
-            // Auto-grade MCQs on the fly if they are missing a score (backward compatibility)
-            if (sub.quiz.quizType === 'mcq' && computedScore == null && sub.status === 'submitted') {
-                let autoScore = 0;
-                if (sub.answers && Array.isArray(sub.answers)) {
-                    sub.answers.forEach((ans, idx) => {
-                        const correctIdx = sub.quiz.questions[idx]?.correctOptionIndex;
-                        if (correctIdx !== undefined && ans !== null && ans !== '' && Number(ans) === correctIdx) {
-                            autoScore += 1;
-                        }
-                    });
-                }
-                computedScore = autoScore;
-                isGraded = true;
-            }
-
-            // Only count if it has been graded (or auto-graded just now)
-            if (isGraded && computedScore != null) {
-                let maxScore = 0;
-                if (sub.quiz.quizType === 'mcq') {
-                    // For MCQ, each question is usually 1 point
-                    maxScore = sub.quiz.questions.length;
-                } else {
-                    // For Subjective, sum the maxPoints
-                    sub.quiz.questions.forEach(q => maxScore += (q.maxPoints || 1));
-                }
+        const data = await cache.getOrFetch(
+            cache.keys.studentAnalytics(studentId.toString()),
+            async () => {
+                const totalBatches = await Batch.countDocuments({ students: studentId, isActive: true });
                 
-                if (maxScore > 0) {
-                    totalQuizScore += (computedScore / maxScore) * 100;
-                    gradedQuizzes++;
-                }
-            }
-        });
+                const quizSubmissions = await QuizSubmission.find({ 
+                    student: studentId, 
+                    status: { $in: ['submitted', 'graded'] } 
+                }).populate('quiz');
 
-        const avgQuizScore = gradedQuizzes > 0 ? Math.round(totalQuizScore / gradedQuizzes) : 0;
+                const assignmentSubmissions = await AssignmentSubmission.find({ 
+                    student: studentId, 
+                    status: { $in: ['submitted', 'graded'] } 
+                });
 
-        res.json({
-            totalBatches,
-            totalQuizzesTaken,
-            totalAssignmentsSubmitted,
-            avgQuizScore,
-            gradedQuizzes
-        });
+                const totalQuizzesTaken = quizSubmissions.length;
+                const totalAssignmentsSubmitted = assignmentSubmissions.length;
+
+                let totalQuizScore = 0;
+                let gradedQuizzes = 0;
+
+                quizSubmissions.forEach(sub => {
+                    if (!sub.quiz) return;
+
+                    let computedScore = sub.score;
+                    let isGraded = sub.status === 'graded';
+
+                    if (sub.quiz.quizType === 'mcq' && computedScore == null && sub.status === 'submitted') {
+                        let autoScore = 0;
+                        if (sub.answers && Array.isArray(sub.answers)) {
+                            sub.answers.forEach((ans, idx) => {
+                                const correctIdx = sub.quiz.questions[idx]?.correctOptionIndex;
+                                if (correctIdx !== undefined && ans !== null && ans !== '' && Number(ans) === correctIdx) {
+                                    autoScore += 1;
+                                }
+                            });
+                        }
+                        computedScore = autoScore;
+                        isGraded = true;
+                    }
+
+                    if (isGraded && computedScore != null) {
+                        let maxScore = 0;
+                        if (sub.quiz.quizType === 'mcq') {
+                            maxScore = sub.quiz.questions.length;
+                        } else {
+                            sub.quiz.questions.forEach(q => maxScore += (q.maxPoints || 1));
+                        }
+                        
+                        if (maxScore > 0) {
+                            totalQuizScore += (computedScore / maxScore) * 100;
+                            gradedQuizzes++;
+                        }
+                    }
+                });
+
+                const avgQuizScore = gradedQuizzes > 0 ? Math.round(totalQuizScore / gradedQuizzes) : 0;
+
+                return {
+                    totalBatches,
+                    totalQuizzesTaken,
+                    totalAssignmentsSubmitted,
+                    avgQuizScore,
+                    gradedQuizzes
+                };
+            },
+            cache.TTL.STUDENT_ANALYTICS
+        );
+
+        res.json(data);
 
     } catch (error) {
         console.error('Analytics Error:', error);
@@ -95,12 +100,19 @@ export const getStudentAnalytics = async (req, res) => {
 export const getStudentActivity = async (req, res) => {
     try {
         const studentId = req.user._id;
-        
-        const activities = await Activity.find({ user: studentId })
-                                         .sort({ date: 1 })
-                                         .select('date count -_id');
 
-        res.json(activities);
+        const data = await cache.getOrFetch(
+            cache.keys.studentActivity(studentId.toString()),
+            async () => {
+                const activities = await Activity.find({ user: studentId })
+                                                 .sort({ date: 1 })
+                                                 .select('date count -_id');
+                return activities;
+            },
+            cache.TTL.STUDENT_ACTIVITY
+        );
+
+        res.json(data);
     } catch (error) {
         console.error('Activity Fetch Error:', error);
         res.status(500).json({ message: 'Failed to fetch activity' });

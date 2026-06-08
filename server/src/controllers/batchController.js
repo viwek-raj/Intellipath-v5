@@ -4,6 +4,7 @@ import WatchHistory from '../models/WatchHistory.js';
 import User from '../models/User.js';
 import { safeEnqueue } from '../config/queue.js';
 import { getBatchJoinEmailHtml } from '../services/emailService.js';
+import cache from '../services/cacheService.js';
 
 // ============================================================
 // INSTRUCTOR-FACING
@@ -36,6 +37,10 @@ const createBatch = async (req, res) => {
         });
 
         res.status(201).json(batch);
+
+        // Invalidate batch-related caches
+        cache.invalidateByPrefix('batch:');
+        cache.invalidateByPrefix('public:');
     } catch (error) {
         console.error('Create Batch Error:', error);
         res.status(500).json({ message: 'Failed to create batch' });
@@ -49,19 +54,26 @@ const createBatch = async (req, res) => {
  */
 const getMyBatches = async (req, res) => {
     try {
-        const batches = await Batch.find({ instructor: req.user._id })
-            .sort({ createdAt: -1 });
+        const data = await cache.getOrFetch(
+            cache.keys.myBatches(req.user._id.toString()),
+            async () => {
+                const batches = await Batch.find({ instructor: req.user._id })
+                    .sort({ createdAt: -1 });
 
-        const enriched = await Promise.all(
-            batches.map(async (batch) => {
-                const batchObj = batch.toObject();
-                batchObj.studentCount = batch.students.length;
-                batchObj.lectureCount = await Lecture.countDocuments({ batch: batch._id });
-                return batchObj;
-            })
+                const enriched = await Promise.all(
+                    batches.map(async (batch) => {
+                        const batchObj = batch.toObject();
+                        batchObj.studentCount = batch.students.length;
+                        batchObj.lectureCount = await Lecture.countDocuments({ batch: batch._id });
+                        return batchObj;
+                    })
+                );
+                return enriched;
+            },
+            cache.TTL.MY_BATCHES
         );
 
-        res.json(enriched);
+        res.json(data);
     } catch (error) {
         console.error('Get My Batches Error:', error);
         res.status(500).json({ message: 'Failed to fetch batches' });
@@ -93,6 +105,11 @@ const updateBatch = async (req, res) => {
         if (isActive !== undefined) batch.isActive = isActive;
 
         await batch.save();
+
+        // Invalidate batch-related caches
+        cache.invalidateByPrefix('batch:');
+        cache.invalidateByPrefix('public:');
+
         res.json(batch);
     } catch (error) {
         console.error('Update Batch Error:', error);
@@ -128,6 +145,10 @@ const deleteBatch = async (req, res) => {
         });
 
         res.json({ message: 'Batch deleted. Background cleanup in progress.' });
+
+        // Invalidate batch-related caches
+        cache.invalidateByPrefix('batch:');
+        cache.invalidateByPrefix('public:');
     } catch (error) {
         console.error('Delete Batch Error:', error);
         res.status(500).json({ message: 'Failed to delete batch' });
@@ -394,6 +415,11 @@ const joinBatch = async (req, res) => {
         });
 
         res.json({ message: 'Successfully joined batch', batchId: batch._id });
+
+        // Invalidate relevant caches
+        cache.invalidateByPrefix('batch:');
+        cache.invalidateByPrefix('public:');
+        cache.invalidateByPrefix(`student:analytics:${req.user._id}`);
     } catch (error) {
         console.error('Join Batch Error:', error);
         res.status(500).json({ message: 'Failed to join batch' });
@@ -427,6 +453,10 @@ const leaveBatch = async (req, res) => {
         });
 
         res.json({ message: 'Left batch successfully' });
+
+        // Invalidate relevant caches
+        cache.invalidateByPrefix('batch:');
+        cache.invalidateByPrefix(`student:analytics:${req.user._id}`);
     } catch (error) {
         console.error('Leave Batch Error:', error);
         res.status(500).json({ message: 'Failed to leave batch' });
@@ -440,32 +470,39 @@ const leaveBatch = async (req, res) => {
  */
 const getMyEnrolledBatches = async (req, res) => {
     try {
-        const batches = await Batch.find({ students: req.user._id })
-            .populate('instructor', 'name email bio')
-            .sort({ startDate: -1 });
+        const data = await cache.getOrFetch(
+            cache.keys.enrolledBatches(req.user._id.toString()),
+            async () => {
+                const batches = await Batch.find({ students: req.user._id })
+                    .populate('instructor', 'name email bio')
+                    .sort({ startDate: -1 });
 
-        const enriched = await Promise.all(
-            batches.map(async (batch) => {
-                const batchObj = batch.toObject();
-                const totalLectures = await Lecture.countDocuments({ batch: batch._id, isPublished: true });
-                const watchedLectures = await WatchHistory.countDocuments({
-                    student: req.user._id,
-                    batch: batch._id,
-                    percentWatched: { $gte: 90 },
-                });
+                const enriched = await Promise.all(
+                    batches.map(async (batch) => {
+                        const batchObj = batch.toObject();
+                        const totalLectures = await Lecture.countDocuments({ batch: batch._id, isPublished: true });
+                        const watchedLectures = await WatchHistory.countDocuments({
+                            student: req.user._id,
+                            batch: batch._id,
+                            percentWatched: { $gte: 90 },
+                        });
 
-                batchObj.lectureCount = totalLectures;
-                batchObj.watchedCount = watchedLectures;
-                batchObj.studentCount = batch.students.length;
-                batchObj.progress = totalLectures > 0
-                    ? Math.round((watchedLectures / totalLectures) * 100)
-                    : 0;
+                        batchObj.lectureCount = totalLectures;
+                        batchObj.watchedCount = watchedLectures;
+                        batchObj.studentCount = batch.students.length;
+                        batchObj.progress = totalLectures > 0
+                            ? Math.round((watchedLectures / totalLectures) * 100)
+                            : 0;
 
-                return batchObj;
-            })
+                        return batchObj;
+                    })
+                );
+                return enriched;
+            },
+            cache.TTL.ENROLLED_BATCHES
         );
 
-        res.json(enriched);
+        res.json(data);
     } catch (error) {
         console.error('Get Enrolled Batches Error:', error);
         res.status(500).json({ message: 'Failed to fetch enrolled batches' });
